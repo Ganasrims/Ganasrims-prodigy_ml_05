@@ -1,0 +1,55 @@
+import cv2
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.applications import ResNet50
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from PIL import Image
+
+# Step 1: Load and preprocess data
+# Assume you have X_train_images (numpy array of food images) and y_train_labels (list of food names) 
+# and y_train_calories (list of calorie values) obtained from data collection and preprocessing.
+
+# Step 2: Load pre-trained CNN model for food recognition
+base_model = ResNet50(weights='imagenet', include_top=False)
+x = base_model.output
+x = GlobalAveragePooling2D()(x)
+predictions = Dense(len(set(y_train_labels)), activation='softmax')(x)
+food_recognition_model = Model(inputs=base_model.input, outputs=predictions)
+
+# Step 3: Train food recognition model
+X_train, X_valid, y_train, y_valid = train_test_split(X_train_images, y_train_labels, test_size=0.2, random_state=42)
+food_recognition_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+food_recognition_model.fit(X_train, y_train, epochs=10, validation_data=(X_valid, y_valid))
+
+# Step 4: Extract features for calorie estimation
+feature_extractor = Model(inputs=base_model.input, outputs=base_model.get_layer('block5_pool').output)
+X_train_features = feature_extractor.predict(X_train_images)
+
+# Step 5: Train regression model for calorie estimation
+calorie_estimator = LinearRegression()
+calorie_estimator.fit(X_train_features, y_train_calories)
+
+# Step 6: User interface for uploading images and making predictions
+def predict_food_and_calories(image_path):
+    img = cv2.imread(image_path)
+    img = cv2.resize(img, (224, 224))  # Assuming ResNet50 input size
+    img = np.expand_dims(img, axis=0)
+    
+    # Food recognition prediction
+    food_prediction = food_recognition_model.predict(img)
+    food_name = y_train_labels[np.argmax(food_prediction)]
+    
+    # Calorie estimation prediction
+    img_feature = feature_extractor.predict(img)
+    calorie_prediction = calorie_estimator.predict(img_feature)
+    
+    return food_name, calorie_prediction[0]
+
+# Example usage
+image_path = 'path_to_image.jpg'
+food_name, calorie_estimate = predict_food_and_calories(image_path)
+print("Predicted Food:", food_name)
+print("Estimated Calories:", calorie_estimate
